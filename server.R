@@ -1,172 +1,221 @@
-library(flexmix)
-library(fpc)
-library(ggplot2)
-library(DT)
-library(shiny)
-library(MASS)
-library(plotly)
-library(reshape2)
 
-palette(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3",
-          "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999"))
-VariableChoose = c("Continuous", "Normial", "Ordinal", "Count (Poisson)", "Count (Binomial)")
-mIndex = c("nCluster","logLik", "AIC", "BIC", "ICL", "converged","iter")
-dfIndex = c("nCluster","logLik", "AIC", "BIC", "ICL")
 data(Cars93)
 
 shinyServer(function(input, output, session) {
+  
   # load/choose dataset
   dataset <- reactive({
-    if(input$data == 'Example'){
-      if(input$ExampleData == 'Cars93'){
-        data <- Cars93[,c(3,5,8,10)]
-      }
+    if(input$data == 'Example'){        
+      if(input$ExampleData == 'Cars93')
+        data <- Cars93[ ,c(3,5,8,10)]
+    }else if(!is.null(input$LoadData)){                              
+      file <- input$LoadData 
+      data <- read.csv(file$datapath) 
     }else{
-      file <- input$LoadData
-      data <- read.csv(file$datapath)
-    }
+      data <- NULL }
     return(data)
   })
   
-  # choose variables 
-  output$variSelector <- renderUI({
-    choose <- as.list(names(dataset()))
-    checkboxGroupInput("VariSelected", h4("Variable Select:"),
-                       choices = choose, selected = choose)
-  })
+  #####################
   
-  datasetS <- reactive({
-    dataset()[,input$VariSelected, drop = FALSE]
-  })
+  # select variables & frequency to be used in model 
+  choices <- reactive( {                                # choices of variables
+    as.list(names(dataset()))})
   
-  # view data 
+  output$variSelector <- renderUI({                     # select variables 
+    checkboxGroupInput("VariSelected", h4("Select Variables:"),
+                       choices = choices(), selected = choices())})
+  
+  output$freqSelector <- renderUI({                    # set frequency index 
+    selectInput("freq", h4("Frequency Index:"), 
+                c("NULL", choices()[!choices() %in% input$VariSelected]))})
+  
+  datasetS <- reactive({                               # final dataset 
+    dataset()[,input$VariSelected, drop = FALSE] })
+  
+  output$typeSelector <- renderUI({                    # set variable types 
+    if(!is.null(input$VariSelected)){
+      L <- vector("list", length(input$VariSelected)) 
+      
+      auto <- lapply(dataset(), class)                  #  set variable type automaticly (normal/multinomial)
+      for(i in 1:length(input$VariSelected)){
+        if(auto[[input$VariSelected[i]]] != 'factor')
+          autoSelected <- 'Continuous'
+        else
+          autoSelected <- 'Nominal'
+        
+        # set type for each input
+        L[[i]] <- selectInput(paste0("tpVar_",i), input$VariSelected[i], varChoices ,
+                              selected = autoSelected)}
+      L 
+    }})
+  
+  ####################
+  
+  # OUTPUT: view data in a table 
   output$dataView <- DT::renderDataTable({
     DT::datatable(datasetS(),
                   options = list(lengthMenu = c(5, 10, 30), pageLength = 5))
   })
   
-  # choose variable types 
-  output$typeSelector <- renderUI({
-    choose <- as.list(input$VariSelected)
-    L <- vector("list",length(choose))
-    auto <- lapply(dataset(), class)
-    for(i in 1:length(choose)){
-      if(auto[[choose[[i]]]] != 'factor'){
-        autoSelected <- 'Continuous'
-      }else{
-        autoSelected <- 'Normial'
-      }
-      L[[i]] <- selectInput(choose[[i]], choose[i], VariableChoose,
-                            selected = autoSelected)
-    }
-    L
+  # OUTPUT: pairs plot
+  output$dataplot <- renderPlot({
+    if(!is.null(datasetS()))
+      pairs(datasetS())
   })
-
-  variableType <- reactive({
-    choose <- as.list(input$VariSelected)
-    Ltype <- vector("list",length(VariableChoose))
-    names(Ltype) <- VariableChoose
-     for(i in 1:length(choose)){
-       for(j in 1:length(VariableChoose)){
-         if(input[[choose[[i]]]] == VariableChoose[j]){
-           Ltype[[VariableChoose[j]]] <- append(Ltype[[VariableChoose[j]]], i)
-         }
-       }
+  
+  # OUTPUT: summary table 
+  output$dataSummary <- renderTable({
+    if(!is.null(datasetS())){
+      options(digits =3)
+      summary(datasetS())
     }
+  })
+  
+  #####################
+  
+  # segment variables by type
+  variableType <- reactive({ 
+    Ltype <- vector("list", length(varChoices))
+    names(Ltype) <- varChoices 
+    
+    for(i in 1:length(input$VariSelected)){
+      for(j in 1:length(varChoices)){
+        if(input[[paste0("tpVar_",i)]] == varChoices[j])
+          Ltype[[varChoices[j]]] <- append(Ltype[[varChoices[j]]], i)
+      }}
     Ltype
   })
   
-#   output$test <- renderPrint({
-#     variableType()
-#   })
-  
   # run algorithm and calculate clusters
-  clusters <- reactive({
+  clusters <- eventReactive(input$run, {
     
-    cc <- discrete.recode(datasetS(), xvarsorted = FALSE, 
-                          continuous = variableType()$Continuous, 
-                          discrete = variableType()$Normial)
+    # add frequency index [space cost; to improve!!]
+    if(input$freq != "NULL"){
+      df <- datasetS()
+      df <- df[rep(seq_len(nrow(df)), as.integer(dataset()[,input$freq])),]
+    }else
+      df <- datasetS()
+    
+    cc <- data.recode(df, continuous = variableType()$Continuous,
+                      ordinal = variableType()$Ordinal,
+                      nominal = variableType()$Nominal,
+                      count = variableType()$Count_Poisson)
     
     initFlexmix(cc$data ~ 1, k = input$nCluster[1]:input$nCluster[2],
-            model = lcmixed(continuous = cc$continuous,
-                            discrete = cc$discrete,
-                            ppdim = cc$ppdim,
-                            diagonal = TRUE))
+                model = mcmixed(continuous = cc$con.len,
+                                ordinal = cc$ord.len,
+                                nominal = cc$nom.len,
+                                count.poi = cc$count.len,
+                                ppdim = cc$ppdim[(cc$ord.len+1):(cc$ord.len+cc$nom.len)],
+                                diagonal = TRUE))
   })
   
-  
-  # choose model index
-  output$indexSelector <- renderUI({
-    checkboxGroupInput("indexSelected", h4("Variable Select:"),
-                       choices = mIndex, selected = dfIndex)
-  })
-   
 
-  # output summary stuff
+    # OUTPUT: choose index to show 
+    output$indexSelector <- renderUI({
+      checkboxGroupInput("indexSelected", h4("Summary Display:"),
+                         choices = mIndex, selected = dfIndex,inline = T)
+    })
+
+  
+  # OUTPUT: summary stuff, cut the tail several lines of the output from clusters() 
   summaryIndex <- reactive({
-        d <- capture.output(clusters())
-        dd <- tail(d, input$nCluster[2]- input$nCluster[1]+2)
-        tt <- strsplit(dd,"\\s+")
-        t <- do.call(rbind, lapply(seq_along(tt), function(i){tt[[i]]}))
-        t[1,1] <- "nCluster" 
-        colnames(t) <- t[1,]
-        t[-1,input$indexSelected]
+    d <- capture.output(clusters())
+    dd <- tail(d, input$nCluster[2]- input$nCluster[1]+2)
+    tt <- strsplit(dd,"\\s+")
+    t <- do.call(rbind, lapply(seq_along(tt), function(i){tt[[i]]}))
+    t[1,1] <- "nCluster" 
+    colnames(t) <- t[1,]
+    t[-1,input$indexSelected]
   })
-    
-  output$summary <- DT::renderDataTable({
+  
+  output$summary <- DT::renderDataTable({   # summary table 
     DT::datatable(summaryIndex(),
                   options = list(lengthMenu = c(5, 10, 30), pageLength = 5))
   })
   
-  output$plotSummary <- renderPlot({ 
+  output$plotSummary <- renderPlot({        # summary plot
     plot(clusters())
   })
   
   
+  # Select model by some index 
   mod <- reactive({
     getModel(clusters(), which = input$mChoose)
   })
-   
   
-  # plot of each parameters
-  para <- reactive({  # parameter 
+  
+  # plot of each parameters  ## change this !
+  para <- reactive( {                  # parameters
     parameters(mod())
   })
   
-  # data used in ggplot
-  data_long <- reactive({ 
+  ##############  stop here 07.12
+  ######## make this to a function  
+  
+  
+  data_long <- reactive({             # long data for plot 
     n_c <- length(variableType()$Continuous) 
-    datap <- as.data.frame(para())[-seq(n_c + 1, n_c + n_c*n_c),]  # exclude covariance ,need to change if diaginal = FALSE
+    n_o <- length(variableType()$Ordinal)
+    n_n <- length(variableType()$Nominal)
     
     # names the parameters
-    nameDis <- melt(lapply(datasetS(),levels)[variableType()$Normial])[,c(2,1)]
-    namep <- c(names(datasetS()[,variableType()$Continuous]),  
-               apply(nameDis, 1, paste, collapse = "-"))
+    namep <- c()
+    if(n_c >0){
+      datap <- as.data.frame(para())[ -seq(n_c + 1, n_c + n_c*n_c),]   # exclude covariance, need to change if diaginal = FALSE
+      namep <- append(namep, names(datasetS()[,variableType()$Continuous]))
+    }else{
+      datap <- as.data.frame(para())
+    }
+    
+    if( n_o >0){
+      datap <-datap[-seq(n_c+n_o+1, n_c+n_o + n_o*n_o),] # exclude covariance 
+      nameDis <- melt(lapply(datasetS(),levels)[variableType()$Ordinal])[,c(2,1)]
+      namep <- append(namep, apply(nameDis, 1, paste, collapse = "-"))
+    }
+    
+    if( n_n >0){
+      nameDis <- melt(lapply(datasetS(),levels)[variableType()$Nominal])[,c(2,1)]
+      namep <- append(namep, apply(nameDis, 1, paste, collapse = "-"))
+    }
+    
     datap <- cbind("id" = namep, datap)
-    # datap <- cbind("id" = rownames(datap),datap)
     
     # scale (0-1) mean of continuous data 
-    minV <- apply(datasetS()[,variableType()$Continuous],2,min)
-    maxV <- apply(datasetS()[,variableType()$Continuous],2,max)
-    datap[1:n_c, -1] <- (datap[1:n_c, -1] - minV) / (maxV - minV) 
+    if(n_c>1){
+      minV <- apply(datasetS()[,variableType()$Continuous],2,min)
+      maxV <- apply(datasetS()[,variableType()$Continuous],2,max)
+      datap[1:n_c, -1] <- (datap[1:n_c, -1] - minV) / (maxV - minV) 
+    }else if(n_c ==1){
+      minV <- min(datasetS()[,variableType()$Continuous])
+      maxV <- max(datasetS()[,variableType()$Continuous])
+      datap[1, -1] <- (datap[1, -1] - minV) / (maxV - minV) 
+    }
+    
     as.data.frame(melt(datap, id = "id"), stringsAsFactors = F)
   })
   
+  
+  
   output$plot1 <- renderPlotly({
-    a <- list(
+    a <- list(                  # xaxis style
       title = "",
       showticklabels = TRUE,
       tickangle = 20,
       tickfont = list(size = 10, color = "black")
     )
-    
     p <- data_long() %>%
       plot_ly(x = id, y = value,  color = variable) %>%
       layout(xaxis = a)
   })
   
-  output$profile <- renderPrint({
+  output$profile <- renderPrint({  # profile 
     para()
+  })
+  
+  output$test <- renderPrint({
+    head(data_long())
   })
   
 })
