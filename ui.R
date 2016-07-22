@@ -2,6 +2,14 @@
 ExampleDataset = c("Mixed Normal and Multinormial" = "Cars93")
 Index = c("AIC", "BIC", "ICL")
 
+
+textInputRow<-function (inputId, label, value = "") 
+{
+  div(style="display:inline-block",
+      tags$label(label, `for` = inputId), 
+      tags$input(id = inputId, type = "text", value = value,class="input-small"))
+}
+
 shinyUI(
   fluidPage( 
     theme = "simple.css",
@@ -14,7 +22,7 @@ shinyUI(
   
   sidebarPanel(
     h4("Dataset:"),                            ## load data 
-    selectInput("data", "Select Dataset", c("Example","Upload Dataset")),
+    selectInput("data", "Select Dataset", c("Example","Upload Dataset","Simulate Dataset")),
     
     conditionalPanel(
       condition = "input.data == 'Example'",    # Example dataset 
@@ -33,6 +41,7 @@ shinyUI(
     
     h4("Variable Type:"),                       ## set variables' type 
     uiOutput("typeSelector"),
+    uiOutput("orderSelector"),
     hr(),
     sliderInput("nCluster",h4("Number of Clusters:"),   ## set number of clusters
                 min = 1, max = 20, value = c(2,5), step =1),
@@ -42,16 +51,25 @@ shinyUI(
   ),
   
   mainPanel(
-    tabsetPanel(
+    tabsetPanel( id = "tabset",
       tabPanel("Data",
                h3("Raw Data:"),
                DT::dataTableOutput('dataView'),
                h3("Summary:"),
                tabsetPanel(
-                 tabPanel('plot', plotOutput('dataplot')),
+                 tabPanel('Plot', 
+                          plotOutput('dataplot'),
+                          checkboxInput("ggpairs", label = "ggpairs", value = FALSE)
+                          # checkboxInput("ifCompPlot", label = "compare plot", value = FALSE),
+                          # plotOutput("compplot")
+                          ),
+                 
                  tabPanel('Table', align = 'center', 
                           style = "margin-top:50px;",
-                          tableOutput('dataSummary')))
+                          tableOutput('dataSummary'))
+                 
+                 )
+               
                ),
              
       tabPanel("Clustering", 
@@ -65,17 +83,79 @@ shinyUI(
                
                hr(),
                
-               selectInput("mChoose", h4("Choose Model By:"), Index),
+               selectInput("mChoose", h4("Choose Model By:"), c(Index,"Number of cluster")),
+               conditionalPanel(
+                 condition= 'input.mChoose == "Number of cluster"',
+                 uiOutput("nclust")
+               ),
                
-               h3("Profile Plot:"),
-               plotlyOutput(outputId = "plot1"),
-               verbatimTextOutput("test"),
-               verbatimTextOutput("profile")
+               tabsetPanel(
+                 tabPanel("Profile",
+                         fluidRow(
+                           align = 'center',
+                           style = "margin-top:50px;",
+                           tableOutput("profile" )
+                         ),
+                         checkboxInput("detail", label = "Show details", value = FALSE),
+                         hr(),
+                         plotlyOutput(outputId = "plot1")
+                 ),
+                 tabPanel("ProbMeans",
+                          fluidRow(
+                            align = 'center',
+                            style = "margin-top:50px;",
+                            tableOutput("probMeans" )
+                          ),
+                          checkboxInput("detail1", label = "Show details", value = FALSE)
+                          )
                )
+               
+               
+               #textOutput("print"),
+               #tableOutput("test" )
+               ),
       
-  
-  )
-)
-  
-  
+      tabPanel('Output',
+               selectInput('outputSet', h3('Choose a output dataset:'),
+                           choices = c("Dataset (with cluster)", "Profile", "ProbMeans")),
+               downloadButton('downloadOutput','Download')),
+
+      tabPanel('Simulate',
+               style = "margin-top:5px;",
+               conditionalPanel(
+                 condition = 'input.data == "Simulate Dataset"',
+                 
+               numericInput('ngroup', h4('Number of groups'),value =3, min = 2, step =1),
+               h4('Size of each group:'),
+               fluidRow(
+                 uiOutput('sizeSelector')
+               ),
+               
+               h4('Number of each kinds of variables:'),
+               fluidRow(
+                 column(width = 2, numericInput('ncont', 'continuous',value = 1, min = 0, step = 1)),
+                 column(width = 2, numericInput('nord', 'ordinal',value = 0, min = 0, step = 1)),
+                 column(width = 2, numericInput('nnom', 'nominal',value = 1, min = 0, step = 1)),
+                 column(width = 2, numericInput('ncount', 'count',value = 0, min = 0, step = 1))
+               ),
+               
+               checkboxInput('defineDT','Define Details', value = FALSE),
+               
+               fluidRow( uiOutput('cateOrd')),
+               fluidRow( uiOutput('cateNom')),
+               
+               
+              
+              rHandsontableOutput("hot", width = 350),
+
+              hr(),
+              h3("Simulated Data:"),
+              DT::dataTableOutput('simulatedData'),
+              hr(),
+              h3("Clustering Table:"),
+              tableOutput("clustTable")
+      )  
+
+     )
+  ))
 ))

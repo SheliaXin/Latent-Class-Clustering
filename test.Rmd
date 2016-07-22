@@ -1,0 +1,30 @@
+---
+title: "Untitled"
+author: "Xin Xu"
+date: "July 14, 2016"
+output: pdf_document
+---
+```{r,results="asis"}
+require(xtable)
+age <- sample(c('30-50', '50-70', '70+'), 200, replace=T)
+sex <- sample(c('Male', 'Female'), 200, replace=T)
+val <- table(age, sex)
+val <- rbind(val, formatC(prop.table(val)*100, format='f', digits=1))
+val <- structure(val, dim=c(3, 4))
+val <- rbind(c('n', '%'), val)
+rownames(val) <- c('', sort(unique(age)))
+val <- xtable(val)
+
+
+addtorow <- list()
+addtorow$pos <- list(0)
+addtorow$command <- paste0(paste0('& \\multicolumn{2}{c}{', sort(unique(sex)), '}', collapse=''), '\\\\')
+
+print(val, add.to.row=addtorow, include.colnames=F)
+
+
+
+library(ggplot2)
+pm <- ggpairs(tips, mapping = aes(color = sex), columns = c("total_bill", "time", "tip"))
+pm
+```
