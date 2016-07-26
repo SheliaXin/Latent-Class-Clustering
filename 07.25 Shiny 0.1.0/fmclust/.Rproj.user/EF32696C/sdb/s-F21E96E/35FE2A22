@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "#' data.recode\n#'\n#' Prepare data to be used in function \\code{\\link{mcmixed}}. This function\n#' recodes discrete/categorical variables to standard number.\n#'\n#' @param x input data\n#' @param continuous  a vecter indicates the columns of continuous variables.\n#' @param ordinal  a vecter indicates the columns of ordinal variables.\n#' @param nominal  a vecter indicates the columns of nominal variables.\n#' @param count  a vecter indicates the columns of count variables.\n#' @param order  a list indicates the order of each ordinal variable.\n#' @return a list with components\n#'      \\item{data}{numeric data matrix with the order of continuous, ordinal,\n#'      nominal, count variables}\n#'      \\item{ppdim}{vector of nominal variable-wise numbers of categories.}\n#'      \\item{con.name/ord.name/count.name}{name of continuous/ordinal/count variables}\n#'      \\item{ord.levels/nom.levels}{lists of levels for each ordinal/nominal variables}\n#'      \\item{con.len/ord.len/nom.len/count.len}{number of each kinds of variables}\n#'      \\item{ordata}{original data after exchange columns}\n#' @export\n\ndata.recode <- function(x, continuous = NULL, ordinal = NULL, nominal = NULL,\n                        count = NULL, order = NULL){\n\n  x.data <- data.matrix(x)\n  x <- x[,c(continuous, ordinal, nominal, count), drop = FALSE]\n  x.data <- x.data[,c(continuous, ordinal, nominal, count), drop = FALSE]\n  con.len <- length(continuous)\n  ord.len <- length(ordinal)\n  nom.len <- length(nominal)\n  count.len <- length(count)\n\n  x.recode <- matrix(0,ncol=ncol(x.data),nrow=nrow(x.data))\n\n  con.name <- c()\n  if (con.len>0){\n    x.recode[,1:con.len] <- x.data[,1:con.len]\n    con.name <- colnames(x)[1:con.len]\n  }\n\n  s <- con.len\n  ord.name <- c()\n  if(ord.len >0){\n    x.recode[,(s+1):(s+ord.len)] <- x.data[,(s+1):(s+ord.len)]\n    ord.name <- colnames(x)[(s+1):(s+ord.len)]\n  }\n\n  ord.levels <- list()\n  if(ord.len>0){\n    for(i in 1:ord.len){\n      name <- colnames(x)[con.len+i]\n      if(!is.null(order) && !is.null(order[[i]])){\n        ord.levels[[name]] <- order[[i]]\n      }else{\n        ord.levels[[name]] <- levels(as.factor(x[,con.len+i]))\n      }\n\n      p <- length(ord.levels[[name]])\n      for( j in 1:p){\n        x.recode[as.factor(x[,con.len +i]) == ord.levels[[name]][j], con.len+i] <- j\n      }\n\n    }}\n\n  s <- s + ord.len\n  nom.levels <- list()\n  ppdim <- numeric(0)\n  if(nom.len>0){\n    for(i in 1:nom.len){\n      name <- colnames(x)[s+i]\n      nom.levels[[name]] <- levels(as.factor(x[,s+i]))\n      ppdim[i] <- length(nom.levels[[name]])\n      for( j in 1:ppdim[i])\n        x.recode[as.factor(x[, s+i]) == nom.levels[[name]][j], s+i] <- j\n    }}\n\n  s <- s + nom.len\n  count.name <- c()\n  if(count.len >0){\n    x.recode[,(s+1):(s+count.len)] <- x.data[,(s+1):(s+count.len)]\n    count.name <- colnames(x)[(s+1):(s + count.len)]\n  }\n\n  out <- list(data = x.recode, ppdim = ppdim,\n              con.name = con.name, ord.name = ord.name, count.name = count.name,\n              ord.levels = ord.levels, nom.levels = nom.levels,\n              con.len = con.len, ord.len = ord.len, nom.len = nom.len, count.len = count.len,\n              ordata = x)\n  out\n}\n",
+    "created" : 1469475535296.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2813917447",
+    "id" : "35FE2A22",
+    "lastKnownWriteTime" : 1469543175,
+    "last_content_update" : 1469543175086,
+    "path" : "~/Desktop/customer segmentation/07.25 Shiny 1.0/fmclust/R/dataRecode.R",
+    "project_path" : "R/dataRecode.R",
+    "properties" : {
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

@@ -1,0 +1,21 @@
+{
+    "collab_server" : "",
+    "contents" : "---\ntitle: \"Develop a R Package\"\nauthor: \"Xin Xu\"\ndate: \"July 25, 2016\"\noutput: pdf_document\n---\n\n# Prepare\n```{r}\n# install.packages(c(\"devtools\", \"roxygen2\", \"testthat\", \"knitr\"))\n# install.packages(\"rstudioapi\")\n# rstudioapi::isAvailable(\"0.99.149\")\n# devtools::install_github(\"hadley/devtools\")\n# library(devtools)\n# library(roxygen2)\n# library(testthat)\n```\n\n\n### vignette (RMarkdown)\n- the original source file\n- a readable HTML/pdf\n- R code\n\n\n```{r}\n# browseVignettes(\"flexmix\")\n# devtools::use_vignette(\"my-vignette\")\n```\n\n# Package Structure\n\n## What is a package?\nfive states a package can be in across its lifecycle: source, bundled, binary, installed and in-memory.\n\n  * __Source packages__\n    \n    A source package is just a directory with components like R/, DESCRIPTION, and so on.\n  * __Bundled packages__\n    \n    A package that’s been compressed into a single file. `.tar.gz`\n  * __Binary packages__\n  \n    A single file, distributed to a R user without package development tools.\n       * Platform specific! can't install a Windows -> Mac or vice versa\n       * Mac: `tgz`; Windows: `.zip`\n       * code: `devtools::build(binary = TRUE)`\n  * __Installed packages__\n    \n    A package library decompressed from a binary package. \n  * __In memory packages__\n  \n    A package in memory ready to use.\n\n\n# R code\n\n# Namespace\nDefine the connections with other packages. (\"not very important if you're only developing packages for yourself, but vital if you plan to submit your package to CRAN.\")\n\n### imports\n**loads** the packages listed. It is similar to `Depends` in `DESCRIPTION`, while `Depends` **attaches** these packages. Attach a package will add it into the search path, while loads a package will not. Since a good package should minimises changes to the global environment, it is better to list packages in `Imports` rather than `Depends`. But if your packages builds on top of another package, you should use `Depends`. \nmore[http://r-pkgs.had.co.nz/namespace.html] \n\nuse: `pkg::fun()`\n`@importFrom pgk fun`\n\n\n### exports\nSpecify which functions are available outside of your package. It helps you avoid conflicts with other packages.\n\n\n\n\n\n\n### Reference\n\n1. R packages http://r-pkgs.had.co.nz\n",
+    "created" : 1469476874319.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1483593690",
+    "id" : "6A96F42",
+    "lastKnownWriteTime" : 1469546485,
+    "last_content_update" : 1469546485095,
+    "path" : "~/Desktop/customer segmentation/post/R-package.Rmd",
+    "project_path" : null,
+    "properties" : {
+        "source_window_id" : ""
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

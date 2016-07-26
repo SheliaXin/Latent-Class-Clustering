@@ -1,0 +1,21 @@
+Package: fmclust
+Type: Package
+Title: Finite Mixture Clustering Model for Mixed-Mode Data
+Version: 0.1.0
+Author: Julia Xu
+Maintainer: Who to complain to <jxu@in4ins.com>
+Description: An Finite Mixture Model used to cluster mixed-mode data. 
+    It is constructed based on package flexmix and fpc and can handle 
+    Continuous/Nominal/Count data.
+License: What license is it under?
+LazyData: TRUE
+RoxygenNote: 5.0.1
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat
+VignetteBuilder: knitr
+Imports:
+    dplyr,
+    flexmix,
+    fpc
