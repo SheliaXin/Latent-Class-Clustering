@@ -39,7 +39,7 @@ profile <- function(mod, data){
       colnames(dfPlt) <- colnames(para)
 
       # table
-      newdf[,i] <- cut(newdf[,i],5)
+      newdf[,i] <- cut(as.numeric(newdf[,i]) ,5)
       t <- table(newdf[,c(i,ncol(newdf))])
       colnames(t) <- colnames(para)
       # t1 <- as.data.frame.matrix(t/colSums(t))

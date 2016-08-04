@@ -9,16 +9,4 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-* Bulleted list
-* Item 2
-    * Nested bullets need a 4-space indent.
-    * Item 2b
-    
-Definition
-  : a statement of the exact meaning of a word, especially in a dictionary.
-  
-| Right | Left | Default | Center |
-|------:|:-----|---------|:------:|
-|   12  |  12  |    12   |    12  |
-|  123  |  123 |   123   |   123  |
-|    1  |    1 |     1   |     1  |
+This will be a writeup for the models used in my package

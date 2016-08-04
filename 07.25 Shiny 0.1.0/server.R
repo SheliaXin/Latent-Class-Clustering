@@ -1,6 +1,7 @@
 
 shinyServer(function(input, output, session) {
   options(stringsAsFactors = TRUE)
+  options(shiny.trace = FALSE)
 
   # choose dataset
   dataset <- reactive({
@@ -13,10 +14,10 @@ shinyServer(function(input, output, session) {
     }else if(input$data == 'Upload Dataset' && !is.null(input$LoadData)){
       updateTabsetPanel(session, "tabset", selected = "Data")
       file <- input$LoadData
-      data <- read.csv(file$datapath)
+      data <- read.csv(file$datapath, stringsAsFactors = TRUE)
 
     }else if(input$data == 'Simulate Dataset' ){
-      updateTabsetPanel(session, "tabset", selected = "Simulate")
+      updateNavlistPanel(session, "tabset", selected = "Simulate")
       if(!is.null(simudata())){
         data <- as.data.frame(simudata()$data[,-1, drop=FALSE])
       }else
@@ -27,6 +28,10 @@ shinyServer(function(input, output, session) {
     return(data)
   })
 
+  # show simulate panel while using simulate dataset
+  observe({
+    toggle(condition = input$data == 'Simulate Dataset', selector = "#tabset li a[data-value=Simulate]")
+  })
 
   # choose variables & frequency index
   choices <- reactive( {                              # choices of variables
@@ -42,15 +47,49 @@ shinyServer(function(input, output, session) {
   })
 
   output$variSelector <- renderUI({                     # select variables
-    checkboxGroupInput("VariSelected", h4("Select Variables:"),
-                       choices = choices(), selected = choices())})
+    checkboxGroupInput("VariSelected", h4("Variables:"),
+                       choices = choices(), selected = choices())
+  })
 
   output$freqSelector <- renderUI({                    # set frequency index
-    selectInput("freq", h4("Frequency Index:"),
-                c("NULL", choices()[!choices() %in% input$VariSelected]))})
+    if(input$containFreq){
+      selectInput("freq", h5("Frequency Index:"),
+                  choices()[!choices() %in% input$VariSelected])
+    }
+  })
+
+  output$covariate <- renderUI({                       # set covariates
+    if(input$containCov){
+      checkboxGroupInput("CovSelected", h5("Covariates:"),
+                         choices = choices()[!choices() %in% input$VariSelected])
+    }else{
+      NULL
+    }
+  })
 
   datasetS <- reactive({                               # dataset with selected variables
-    dataset()[,input$VariSelected, drop = FALSE] })
+    validate(need(!is.null(input$VariSelected),"Please choose some variables"))
+    df <- dataset()[,input$VariSelected, drop = FALSE]
+    if(!is.null(input$CovSelected)){
+      df <- data.frame(df, dataset()[ ,input$CovSelected, drop = FALSE])
+    }
+    df
+  })
+
+  ## test
+  output$test <- renderTable({
+    head(datasetS())
+  })
+
+  # covariate data frame
+  covariates <- reactive({
+    if(!is.null(input$CovSelected)){
+      dataset()[,input$CovSelected, drop = FALSE]
+    }else{
+      NULL
+    }
+
+  })
 
   output$typeSelector <- renderUI({                    # set variable types
     L <- list()
@@ -58,12 +97,10 @@ shinyServer(function(input, output, session) {
 
       auto <- lapply(dataset(), class)                  #  set automaticly (normal/multinomial)
       for(i in 1:length(input$VariSelected)){
-
         if(auto[[input$VariSelected[i]]] != 'factor')
           autoSelected <- 'Continuous'
         else
           autoSelected <- 'Nominal'
-
         L[[i]] <- selectInput(paste0("tpVar_",i), input$VariSelected[i], varChoices ,
                               selected = autoSelected)
       }
@@ -137,17 +174,52 @@ shinyServer(function(input, output, session) {
     }
   })
 
+  # recommend&select packages
+  output$pkgs <- renderUI({
+    df <- data.frame(recom = rep("(recommend)",length(cpkgs)),
+                     row.names = cpkgs, stringsAsFactors =FALSE)
+    if( !is.null(variableType()$Continuous) ){
+      df["poLCA",1] <- "(Cut continuous to nominal)"
+    }
+    if(!is.null(variableType()$Nominal) || !is.null(variableType()$Ordinal) ){
+      df["mclust",1] <- "(All as continuous!)"
+    }
+    pkg <- paste(rownames(df),df$recom)
+    choice <- sapply(cpkgs,list)
+    names(choice) <- pkg
+    recom <-  cpkgs[df[,1]=="(recommend)"]
+    checkboxGroupInput("Pkgs", h4("Recommend Packages:"),
+                       choices = choice, selected = recom)
+  })
+
+  observe({
+    toggle(condition = "flexmix" %in% input$Pkgs ,
+           selector = "#Clustering li a[data-value=flexmix]")
+  })
+
+  observe({
+    toggle(condition = "poLCA" %in% input$Pkgs ,
+           selector = "#Clustering li a[data-value=poLCA]")
+  })
+
+  observe({
+    toggle(condition = "mclust" %in% input$Pkgs ,
+           selector = "#Clustering li a[data-value=mclust]")
+  })
 
   ### Clustering ###
-  # Model & Algorithm
-  clusters <- eventReactive(input$run, {
-
-    # add frequency [space cost; to improve!!]
-    if(input$freq != "NULL"){
+  # add frequency [space cost; to improve!!]
+  dataPre <- eventReactive(input$run, {
+    if(input$containFreq == TRUE){
       df <- datasetS()
       df <- df[rep(seq_len(nrow(df)), as.integer(dataset()[,input$freq])),]
     }else
       df <- datasetS()
+    df
+  })
+
+  #  flexmix Model & Algorithm
+  mfclusters <- eventReactive(input$run, {
 
     # use self-defined order
     ord = NULL
@@ -164,47 +236,119 @@ shinyServer(function(input, output, session) {
       }
     }
 
+    if(!is.null(input$CovSelected)){
+      concomitant =  which(colnames(dataPre()) == input$CovSelected)
+    }else{
+      concomitant = NULL
+    }
 
-    cc <- data.recode(df, continuous = variableType()$Continuous,
-                      ordinal = variableType()$Ordinal,
-                      nominal = variableType()$Nominal,
-                      count = variableType()$Count_Poisson, order=ord )
-
-    mdl <- initFlexmix(cc$data ~ 1, k = input$nCluster[1]:input$nCluster[2],
-                       model = mcmixed(continuous = cc$con.len,
-                                       ordinal = cc$ord.len,
-                                       nominal = cc$nom.len,
-                                       count.poi = cc$count.len,
-                                       ppdim = cc$ppdim[1:cc$nom.len],
-                                       diagonal = TRUE))
-
-    return(list(cc = cc, mdl = mdl))
+    res <- fmclust(dataPre(),
+                   concomitant = concomitant,
+                   continuous = variableType()$Continuous,
+                   ordinal = variableType()$Ordinal,
+                   nominal = variableType()$Nominal,
+                   count = variableType()$Count_Poisson, order=ord,
+                   nClust = input$nCluster[1]:input$nCluster[2],
+                   diagonal = TRUE)
+    return(res)
   })
+
+
+  # poLCA Model & Algorithm
+  poclusters <- eventReactive(input$run, {
+
+    data = dataPre()                     # data preparation
+    if(!is.null(variableType()$Continuous)){
+      data[,variableType()$Continuous] <- lapply(data[ , variableType()$Continuous, drop=FALSE],
+                                                 function(x) factor(cut(x,5)))
+    }
+
+    covariate = covariates()              # cut covariates if continuous
+    if(!is.null(covariate)){
+      tem <- lapply(covariates(), factor)
+      dims <- unlist(lapply(tem, function(x) length(levels(x))))
+      for(i in 1:length(dims)){
+        if(dims[i]>10){
+          covariate[,i] <- factor(cut(covariate[ ,i], 5))
+        }
+      }
+    }
+
+    invisible(capture.output(res <- poLCA.mdls(nClust = input$nCluster[1]:input$nCluster[2],
+                                               covariate = covariates(),
+                                               data = data, nrep = 5)))
+    return(res)
+  })
+
+
+  # #mclust
+  # mcclusters <- eventReactive(input$run,{
+  #   Mclust(dataPre(), G = input$nCluster[1]:input$nCluster[2])
+  # })
+
 
   # Clustering Output
-  output$indexSelector <- renderUI({      # UI: choose index
-    checkboxGroupInput("indexSelected", h4("Summary Display:"),
-                       choices = mIndex, selected = dfIndex,inline = T)
+  # Step 1: summary of all models
+  ## fmclust
+  output$indexSelector <- renderUI({      # UI: choose index [fmclust]
+    checkboxGroupInput("indexSelected", h5("Summary Display:"),
+                       choices = mIndex, selected = dfIndex, inline = T)
   })
 
-  summaryIndex <- reactive({               # summary stuff
+  summaryIndex <- reactive({               # summary stuff [fmclust]
     validate(
-      need(input$indexSelected >0, "Please Choose some Index")
+      need(input$indexSelected > 0, "Please Choose some Index")
     )
-    t <- show(clusters()$mdl)
+    t <- mfclusters()$summary
     t[,input$indexSelected, drop = FALSE]
   })
 
-
-  output$summary <- DT::renderDataTable({   # Output: summary table
+  output$summary <- DT::renderDataTable({   # Output: summary table [fmclust]
     DT::datatable(summaryIndex(),
                   options = list(lengthMenu = c(5, 10, 30), pageLength = 5))
   })
 
-  output$plotSummary <- renderPlot({        # Output: summary plot
-    plot(clusters()$mdl)
+  output$plotSummary <- renderPlot({        # Output: summary plot [fmclust]
+    plot(mfclusters()$mdls)
   })
 
+
+  ## poLCA
+  output$poindexSelector <- renderUI({      # UI: choose index [poLCA]
+    checkboxGroupInput("poindexSelected", h5("Summary Display:"),
+                       choices = poIndex, selected = dfIndex, inline = T)
+  })
+
+  posummaryIndex <- reactive({               # summary stuff [poLCA]
+    validate(
+      need(input$poindexSelected > 0, "Please Choose some Index")
+    )
+    t <- poclusters()$summary
+    t[,input$poindexSelected, drop = FALSE]
+  })
+
+  output$posummary <- DT::renderDataTable({   # Output: summary table [poLCA]
+    DT::datatable(posummaryIndex(),
+                  options = list(lengthMenu = c(5, 10, 30), pageLength = 5))
+  })
+
+  output$poplotSummary <- renderPlot({        # Output: summary plot [fmclust]
+    df <- poclusters()$summary[,c("AIC","BIC")]
+    minIdx <- apply(df, 2, which.min)
+    ylim <- c(min(df), max(df))
+    plot(poclusters()$nClust, df[,"AIC"], type = "b", col = "black", ylim = ylim, cex = 0.8,
+         xlab = "number of components", ylab = "")
+    points(poclusters()$nClust[minIdx["AIC"]], df[minIdx["AIC"],"AIC"],
+           pch = 19, col = "black")
+    lines(poclusters()$nClust, df[,"BIC"], type ="b", col= "red", pch = 2, cex = 0.7)
+    points(poclusters()$nClust[minIdx["BIC"]], df[minIdx["BIC"],"BIC"],
+           pch = 19, col = "red")
+    legend("topright", legend = c("AIC ", "BIC "), col= c("black", "red"),
+           pch = c(1,2), cex = 0.75)
+  })
+
+  # Step 2: choose one model and show details
+  ## fmclust
   output$nclust <- renderUI({               # UI: choose model by # cluster
     selectInput("Nclust", "Number of cluster",
                 choices = as.character(input$nCluster[1]:input$nCluster[2]))
@@ -212,14 +356,14 @@ shinyServer(function(input, output, session) {
 
   mod <- reactive({                        # Select model by some index
     if(input$mChoose != "Number of cluster")
-      m <- getModel(clusters()$mdl, which = input$mChoose)
+      m <- getModel(mfclusters()$mdls, which = input$mChoose)
     else
-      m <- getModel(clusters()$mdl, which = input$Nclust)
+      m <- getModel(mfclusters()$mdls, which = input$Nclust)
     m
   })
 
   prof <- reactive({                       # profile
-    profile(mod(), clusters()$cc)
+    profile(mod(), mfclusters()$cc)
   })
 
   output$plot1 <- renderPlotly({          # Output: profile plot
@@ -240,8 +384,8 @@ shinyServer(function(input, output, session) {
 
   output$profile <- renderTable({        # Output: profile table
     d <- prof()$dfPro
-    if(clusters()$cc$con.len >0 && !input$detail){
-      exRow <- as.vector(sapply(1:clusters()$cc$con.len,
+    if(mfclusters()$cc$con.len >0 && !input$detail){
+      exRow <- as.vector(sapply(1:mfclusters()$cc$con.len,
                                 function(x) 1 + 2:6 + (x-1) * 6))
       return(d[-exRow,])
     }else
@@ -250,13 +394,140 @@ shinyServer(function(input, output, session) {
 
   output$probMeans <- renderTable({     # Output: probmean table
     d <- prof()$dfPrM
-    if(clusters()$cc$con.len >0 && !input$detail1){
-      exRow <- as.vector(sapply(1:clusters()$cc$con.len,
+    if(mfclusters()$cc$con.len >0 && !input$detail1){
+      exRow <- as.vector(sapply(1:mfclusters()$cc$con.len,
                                 function(x) 1 + 2:6 + (x-1) * 6))
       return(d[-exRow,])
     }else
       return(d)
   },include.rownames=FALSE)
+
+  ## poLCA
+  output$ponclust <- renderUI({               # UI: choose model by # cluster
+    selectInput("poNclust", "Number of cluster",
+                choices = as.character(input$nCluster[1]:input$nCluster[2]))
+  })
+
+  poMod <- reactive({                        # Select model by some index
+    if(input$pomChoose != "Number of cluster")
+      m <- poGetModel(poclusters(), which = input$pomChoose)
+    else
+      m <- poGetModel(poclusters(), which = input$poNclust)
+    m
+  })
+
+  output$poplot <- renderPlotly({          # Output: profile plot
+    a <- list(                            ## xaxis style
+      title = "",
+      showticklabels = TRUE,
+      tickangle = 20,
+      tickfont = list(size = 10, color = "black")
+    )
+
+    df <- data.frame('id' = rownames(poMod()$plot), poMod()$plot)
+    data_long <- as.data.frame(melt(df, id = "id"), stringsAsFactors = F)
+
+    p <- data_long %>%
+      plot_ly(x = id, y = value,  color = variable) %>%
+      layout(xaxis = a)
+  })
+
+  output$poprofile <- renderTable({        # Output: profile table
+    d <- poMod()$profile
+  },include.rownames=FALSE)
+
+  output$poprobMeans <- renderTable({     # Output: probmean table
+    d <- poMod()$probMeans
+  },include.rownames=FALSE)
+
+  # mclust
+
+  mcdata <- reactive({
+    as.data.frame(lapply(dataPre(), as.numeric))
+  })
+
+  mcmdls <- reactive({
+    Mclust(mcdata(), G = input$nCluster[1]:input$nCluster[2])
+  })
+
+  mcBIC <- reactive({
+    if(input$mcifBIC == "ICL"){
+      res <- mclustICL(mcdata(), G = input$nCluster[1]:input$nCluster[2])
+    }else{
+      res <- mcmdls()$BIC
+    }
+    res
+  })
+
+  # BIC/ICL summary table
+  mcBICtable <- reactive({
+    x <- mcBIC()
+    Glabels <- dimnames(x)[[1]]
+    modelNames <- dimnames(x)[[2]]
+    x <- matrix(as.vector(x), nrow = length(Glabels), ncol =length(modelNames))
+    rownames(x) <- Glabels
+    colnames(x) <- modelNames
+    x
+  })
+
+  output$mcBICsum <- DT::renderDataTable({
+    mcBICtable()
+  }, options = list(scrollX = TRUE, dom = 't' ))
+
+
+  # BIC/ICL plot
+  output$mcplot <- renderPlot({
+    plot( mcBIC())
+  })
+
+
+  # Choose model and cluster
+  output$mcModel <- renderUI({
+    L <- list()
+    tem <- unlist(strsplit(names(summary(mcBIC())[1]),","))
+    L[[1]] <- selectInput("mcmodel","Choose Model:", choices = colnames(mcBICtable()),
+                          selected = tem[1])
+    L[[2]] <- selectInput("mcclust","Choose Clust:", choices = rownames(mcBICtable()),
+                          selected = tem[2])
+    L
+  })
+
+  mcmod <- reactive({
+    Mclust(mcdata(), G = input$mcclust, modelNames = input$mcmodel)
+  })
+
+  output$mcSum <- renderTable({
+    res <- rbind(summary(mcBIC()))
+    res
+  })
+
+  output$mcprofile <- renderTable({
+    rbind( "size"= mcmod()$parameters$pro, mcmod()$parameters$mean)
+  })
+
+  output$mcProfilePlot <- renderPlotly({
+    a <- list(                            ## xaxis style
+      title = "",
+      showticklabels = TRUE,
+      tickangle = 20,
+      tickfont = list(size = 10, color = "black")
+    )
+    df <- mcmod()$parameters$mean
+    dfmax <- apply(mcdata(),2,max)
+    dfmin <- apply(mcdata(),2,min)
+    df <- data.frame('id' = rownames(df), (df-dfmin)/(dfmax-dfmin))
+    data_long <- as.data.frame(melt(df, id = "id"), stringsAsFactors = F)
+
+    p <- data_long %>%
+      plot_ly(x = id, y = value,  color = variable) %>%
+      layout(xaxis = a)
+  })
+
+
+  output$mcplot1 <- renderPlot({
+    plot(mcmod(), what = "classification")
+  })
+
 
 
   ### Output ###
@@ -438,13 +709,52 @@ shinyServer(function(input, output, session) {
   output$simulatedData <- DT::renderDataTable({   # Simulated data table
     df <- simudata()$data
     df[,2:(1+input$ncont)] <- round(df[,2:(1+input$ncont)],2)
-    DT::datatable(df,
-                  options = list(lengthMenu = c(5, 10, 30), pageLength = 5,autoWidth = TRUE))
+    DT::datatable(df,options = list(scrollX = TRUE, dom = 't' ))
   })
 
-  output$clustTable <- renderTable({              # cluster table
-    if(input$data == 'Simulate Dataset' && !is.na(simudata()$data) && length(mod()@cluster) == length(simudata()$data[,1]))
-      t <- table(simudata()$data[,1], mod()@cluster)
+
+  # clustering table
+  output$fmctable <- renderTable({
+    table(simudata()$data[,1], mod()@cluster)
   })
+
+  output$fmclustTable <- renderUI({              # cluster table
+    L <- list()
+
+    if(input$data == 'Simulate Dataset' && !is.na(simudata()$data) && length(mod()@cluster) == length(simudata()$data[,1])){
+      L[[1]] <- h3("Clustering Table (flexmix):")
+      L[[2]] <- tableOutput("fmctable")
+    }
+    L
+  })
+
+  # poLCA
+  output$poctable <- renderTable({
+    table(simudata()$data[,1], poMod()$predClust)
+  })
+
+  output$poclustTable <- renderUI({              # cluster table
+    L <- list()
+    if(input$data == 'Simulate Dataset' && !is.na(simudata()$data) && length( poMod()$predClust) == length(simudata()$data[,1])){
+      L[[1]] <- h3("Clustering Table (poLCA):")
+      L[[2]] <- tableOutput("poctable")
+    }
+    L
+  })
+
+  # mclust
+  output$mcctable <- renderTable({
+    table(simudata()$data[,1], mcmod()$classification)
+  })
+
+  output$mcclustTable <- renderUI({              # cluster table
+    L <- list()
+    if(input$data == 'Simulate Dataset' && !is.na(simudata()$data) && length(mcmod()$classification) == length(simudata()$data[,1])){
+      L[[1]] <- h3("Clustering Table (mclust):")
+      L[[2]] <- tableOutput("mcctable")
+    }
+    L
+  })
+
 })
 

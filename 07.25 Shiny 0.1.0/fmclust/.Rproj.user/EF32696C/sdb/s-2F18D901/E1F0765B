@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "data(election)\nf2a <- cbind(MORALG,CARESG,KNOWG,LEADG,DISHONG,INTELG,\n             MORALB,CARESB,KNOWB,LEADB,DISHONB,INTELB)~PARTY\nnes2a <- poLCA(f2a,election,nclass=3,nrep=5)    # log-likelihood: -16222.32\npidmat <- cbind(1,c(1:7))\nexb <- exp(pidmat %*% nes2a$coeff)\nmatplot(c(1:7),(cbind(1,exb)/(1+rowSums(exb))),ylim=c(0,1),type=\"l\",\n        main =\"Party ID as a predictor of candidate affinity class\",\n        xlab=\"Party ID: strong Democratic (1) to strong Republican (7)\",\n        ylab=\"Probability of latent class membership\",lwd=2,col=1)\ntext(5.9,0.35,\"Other\")\ntext(5.4,0.7,\"Bush affinity\")\ntext(1.8,0.6,\"Gore affinity\")\n\n###########\ndata <- election[,c(1:12,17)]\ncovariate <- election[,17,drop = FALSE]\nsetdiff(names(data),names(covariate))\nnClust = 2:5\nL <- poLCA.mdls(nClust, data, covariate)\ns <- do.call(rbind.data.frame, lapply(L$mdls, poSummary))  # summary\n\n#plot\ndf <- s[,c(\"AIC\",\"BIC\")]\nminIdx <- apply(df, 2, which.min)\nylim <- c(min(df), max(df))\nplot(nClust, s[,\"AIC\"], type = \"b\", col = \"black\", ylim = ylim, cex=0.8,\n     xlab = \"number of components\")\npoints(nClust[minIdx[\"AIC\"]], df[minIdx[\"AIC\"],\"AIC\"],\n       pch = 19, col = \"black\")\nlines(nClust, df[,\"BIC\"], type =\"b\", col= \"red\", pch = 2,cex=0.7)\npoints(nClust[minIdx[\"BIC\"]], df[minIdx[\"BIC\"],\"BIC\"],\n       pch = 19, col = \"red\")\nlegend(\"topright\", legend = c(\"AIC \", \"BIC \"), col= c(\"black\", \"red\"),\n       pch = c(1,2), cex = 0.75)\n\n# profile\n\nallRes <- poGetModel(L, \"BIC\")\nallRes$plot\nallRes$profile\nallRes$probMeans\nallRes$predClust\n\n#\n\n#############\n\n\n\n\nrequire(flexmix)\nrequire(ggplot2)\nmydata <- data.frame(read.csv(\"mydata.csv\", head=T))\nattach(mydata)\n\n#Plot of y var\nsummary(y)\nggplot(mydata, aes(y)) + geom_histogram(binwidth = .1)\n\n#Simplified example of my current 'best' approach####\nm1 <- flexmix(y ~ x1 + x2 + x3,\n              data = mydata,\n              k = 3)\n\n#Predict cluster membership\nclusters <- data.frame(clusters(m1, newdata = mydata))\n\n#Predict y\na <- data.frame(predict(m1, newdata = mydata))\n\n#Select prediction based on predicted cluster membership\nmydata$flexmix.norm <- ifelse(clusters[,1]==1, a[,1],\n                              ifelse(clusters[,1] == 2,\n                                     a[,2], a[,3]))\nprint(max(mydata$flexmix.norm))\n\n#Plot predicted values\nggplot(mydata, aes(flexmix.norm)) + geom_histogram(binwidth = .1)\n\n#Maybe it's more natural to model as 1 - y, which is bounded (0,Inf) ####\ny.d <- 1 - y\nggplot(mydata, aes(y.d)) + geom_histogram(binwidth = .1)\n\n#Error here ***\nm2 <- flexmix(y.d ~ x1 + x2 + x3,\n              data = mydata,\n              k = 3,\n              model=FLXMRziglm(family=\"poisson\"))\nrm2 = refit(m2)\n\n#Predict cluster membership\nclusters <- NULL\nclusters <- data.frame(clusters(m2, newdata = mydata))\n\n#Predict y (note back on original scale of y)\nb <- 1 - data.frame(predict(m2, newdata = mydata))\n\n#Select prediction based on predicted cluster membership\npreds$flexmix.pois <- ifelse(clusters[,1]==1, b[,1],\n                             ifelse(clusters[,1] == 2,\n                                    b[,2], b[,3]))\n\nggplot(mydata, aes(flexmix.pois)) + geom_histogram(binwidth = .1)\n",
+    "created" : 1470248429205.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2774567235",
+    "id" : "E1F0765B",
+    "lastKnownWriteTime" : 1470248897,
+    "last_content_update" : 1470248897850,
+    "path" : "~/Desktop/customer segmentation/test/testfunction.R",
+    "project_path" : null,
+    "properties" : {
+    },
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

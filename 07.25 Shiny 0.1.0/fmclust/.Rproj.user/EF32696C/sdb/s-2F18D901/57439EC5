@@ -1,0 +1,21 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1470257033867.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "57439EC5",
+    "lastKnownWriteTime" : 6,
+    "last_content_update" : 1470257033867,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "context" : "package:stats:::lm"
+    },
+    "relative_order" : 9,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_code_browser"
+}

@@ -20,8 +20,14 @@
 #' @export
 
 data.recode <- function(x, continuous = NULL, ordinal = NULL, nominal = NULL,
-                        count = NULL, order = NULL){
+                        count = NULL, order = NULL, concomitant = NULL){
 
+
+  if(!is.null(concomitant)){
+    covariates <- x[,concomitant, drop = FALSE]
+  }else{
+    covariates <- NULL
+  }
   x.data <- data.matrix(x)
   x <- x[,c(continuous, ordinal, nominal, count), drop = FALSE]
   x.data <- x.data[,c(continuous, ordinal, nominal, count), drop = FALSE]
@@ -81,10 +87,12 @@ data.recode <- function(x, continuous = NULL, ordinal = NULL, nominal = NULL,
     count.name <- colnames(x)[(s+1):(s + count.len)]
   }
 
+  colnames(x.recode)  <- colnames(x)
+
   out <- list(data = x.recode, ppdim = ppdim,
               con.name = con.name, ord.name = ord.name, count.name = count.name,
               ord.levels = ord.levels, nom.levels = nom.levels,
               con.len = con.len, ord.len = ord.len, nom.len = nom.len, count.len = count.len,
-              ordata = x)
+              ordata = x, covariates = covariates)
   out
 }

@@ -5,7 +5,7 @@
 \title{data.recode}
 \usage{
 data.recode(x, continuous = NULL, ordinal = NULL, nominal = NULL,
-  count = NULL, order = NULL)
+  count = NULL, order = NULL, concomitant = NULL)
 }
 \arguments{
 \item{x}{input data}
